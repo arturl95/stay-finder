@@ -132,8 +132,15 @@ const result = {listings: DATA.length, storeWarnVisible: !$("storeWarn").hidden,
 let ids = shownIds();
 result.steps.initial = ids.length;
 const live = DATA.filter(d => !d.exclude.length);
-check(ids.length === live.length, `initial: ${ids.length} shown, expected ${live.length} (all not excluded)`);
+const verdict = d => d.photo ? d.photo.verdict : "unchecked";
+// default photo filter (only on judged pages) keeps everything but "no"
+const liveDefault = APP.judged ? live.filter(d => verdict(d) !== "no") : live;
+check(ids.length === liveDefault.length, `initial: ${ids.length} shown, expected ${liveDefault.length} (all not excluded${APP.judged ? ", photos not 'no'" : ""})`);
 check(JSON.stringify([...dots()].sort()) === JSON.stringify([...ids].sort()), "initial: map dots differ from cards");
+check(!!$("fPhoto") === !!APP.judged, "photo filter present without judgements, or missing with them");
+check(/Photos: /.test($("cards").innerHTML) === !!APP.judged, "photo chips present without judgements, or missing with them");
+// the rest of the filter checks count against every listing not excluded, so show every photo verdict
+if (APP.judged) set("fPhoto", "all");
 check(/match/.test($("count").textContent), "count text missing");
 check($("map").getAttribute("viewBox") === `0 0 ${APP.map.W} ${APP.map.H}`, "map viewBox not set");
 check(($("map").innerHTML.match(/<polygon /g) || []).length >= Math.max(1, APP.areas.reduce((n, a) => n + a.rings.length, 0)), "area outlines missing");
@@ -206,6 +213,29 @@ ids = shownIds();
 result.steps.excluded = ids.length;
 check(ids.length === DATA.filter(d => d.exclude.length).length, "excluded view count wrong");
 set("fShow", "active");
+
+// photo check
+if (APP.judged) {
+  const want = {all: live, ok: liveDefault, great: live.filter(d => verdict(d) === "great")};
+  for (const v of ["ok", "great", "all"]) {
+    set("fPhoto", v);
+    ids = shownIds();
+    result.steps["photo_" + v] = ids.length;
+    check(ids.length === want[v].length, `photo filter ${v}: ${ids.length} shown, expected ${want[v].length}`);
+  }
+  set("fSort", "photos");
+  ids = shownIds();
+  result.steps.photo_order = ids;
+  const rank = {great: 0, ok: 1, unchecked: 2, no: 3};
+  check(ids.every((id, i) => i === 0 || rank[verdict(byId[ids[i - 1]])] <= rank[verdict(byId[id])]), "sort by photos is not best first");
+  const col = {great: "var(--ok)", ok: "var(--warn)", unchecked: "var(--muted)", no: "var(--brick)"};
+  for (const c of $("map").querySelectorAll(".pt")) check(c.attrs.fill === col[verdict(byId[c.dataset.id])], `dot ${c.dataset.id}: colour ${c.attrs.fill} does not match its photo verdict`);
+  for (const d of live.filter(d => d.photo)) check($("cards").innerHTML.includes(`Photos: ${verdict(d)}`) && $("cards").innerHTML.includes(d.photo.note.replace(/&/g, "&amp;")), `card ${d.id}: verdict or note missing`);
+  check($("cards").innerHTML.includes("Photos: not checked") === live.some(d => !d.photo), "'not checked' chip wrong");
+  result.legend = $("legend").innerHTML.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  set("fSort", "price");
+  set("fPhoto", "all");
+}
 
 // favourite + delete through the card buttons
 ids = shownIds();

@@ -8,7 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import airbnb, areas as areas_mod, config, page
+from . import airbnb, areas as areas_mod, config, page, photos as photos_mod
 from .rules import apply_rules, compile_rules
 
 AIRBNB_GAP_S = 0.5     # at least this long between two Airbnb requests, across all threads
@@ -199,10 +199,13 @@ def listing_record(cfg, cand, info, rules, studio_rx):
         "amenities": info["amenities"], "am": amenity_hits(cfg["amenity_filters"], info["amenities"]),
         "studio": studio_hit(studio_rx, cand["name"], info["overview"], info["kind"]),
         "exclude": hits["exclude"], "flag": hits["flag"], "highlight": hits["highlight"],
+        "photo": None,  # {"verdict", "note"} from the judgements file, when one is given
     }
 
 
-def build(cfg_path, log=print):
+def collect(cfg_path, log=print):
+    """Read the cached run and turn every cached listing into a page record.
+    Returns (cfg, out_path, cache_dir, run_data, records, low_rated)."""
     cfg = config.load(cfg_path, allow_past=True)
     cache_dir, out_path = _paths(cfg_path, cfg)
     cache = Cache(cache_dir)
@@ -223,15 +226,36 @@ def build(cfg_path, log=print):
             low_rated += 1
             continue
         records.append(listing_record(cfg, c, info, rules, studio_rx))
+    return cfg, out_path, cache_dir, run_data, records, low_rated
+
+
+def build(cfg_path, log=print):
+    cfg, out_path, _, run_data, records, low_rated = collect(cfg_path, log)
     for f in cfg["amenity_filters"]:
         if records and not any(r["am"][f] for r in records):
             log(f"Note: no listing has an amenity containing {f!r}; check the spelling against Airbnb's amenity names.")
+    judged = cfg["judgements"] is not None
+    if judged:
+        base = Path(cfg_path).resolve().parent
+        verdicts = photos_mod.load_judgements(cfg["judgements"], base, {r["id"] for r in records})
+        for r in records:
+            r["photo"] = verdicts.get(r["id"])
+        log(f"Photo check: {len(verdicts)} of {len(records)} listings judged.")
     stats = {**run_data["counts"], "below_min_rating": low_rated, "listed": len(records),
              "excluded": sum(1 for r in records if r["exclude"])}
     html = page.build_page(cfg, records, run_data["areas"], run_data["bbox"], stats, run_data["searched_at"],
-                           storage_key=out_path.name)
+                           storage_key=out_path.name, judged=judged)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     log(f"{len(records)} listings on the page ({stats['excluded']} excluded by rules, "
         f"{low_rated} below min_rating left out).")
     return out_path
+
+
+def photos(cfg_path, max_n=12, log=print, download=None):
+    """Download the first max_n photo-tour photos of every listing on the page (not excluded by rules)
+    into <cache>/photos/<id>/ and write <cache>/photos/index.json. Returns photos.download_all's summary."""
+    cfg, _, cache_dir, _, records, _ = collect(cfg_path, log)
+    shown = [r for r in records if not r["exclude"]]
+    return photos_mod.download_all(cfg, shown, Path(cache_dir) / "photos", max_n, log,
+                                   download or photos_mod.fetch_image)

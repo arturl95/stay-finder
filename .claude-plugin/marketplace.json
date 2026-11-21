@@ -1,7 +1,7 @@
 {
   "name": "stay-finder",
   "owner": {"name": "arturl95"},
-  "metadata": {"description": "Find Airbnb stays for your dates, budget and neighbourhoods, filtered by your own rules, as one local HTML page with a map", "version": "1.0.0"},
+  "metadata": {"description": "Find Airbnb stays for your dates, budget and neighbourhoods, filtered by your own rules, as one local HTML page with a map", "version": "1.1.0"},
   "plugins": [
     {
       "name": "stay-finder",

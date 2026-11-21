@@ -75,7 +75,7 @@ def search_filter_text(cfg):
     return out
 
 
-def controls_html(cfg, area_names, listings):
+def controls_html(cfg, area_names, listings, judged=False):
     e = html.escape
     rules = cfg["rules"]
     flags = [r["label"] for r in rules if r["action"] == "flag"]
@@ -104,6 +104,11 @@ def controls_html(cfg, area_names, listings):
     hide += [f'<label class="chk"><input type="checkbox" id="fHl{i}"> must: {e(l)}</label>' for i, l in enumerate(hls)]
     hide += [f'<label class="chk"><input type="checkbox" id="fAm{i}"> must have: {e(a)}</label>'
              for i, a in enumerate(cfg["amenity_filters"])]
+    if judged:
+        out.append('''    <div class="ctl">
+      <label class="h" for="fPhoto">Photo check</label>
+      <select id="fPhoto"><option value="ok">great + ok (and not checked)</option><option value="great">great only</option><option value="all">everything</option></select>
+    </div>''')
     if hide:
         out.append('    <div class="ctl">\n      <span class="h">Hide / must have</span>\n      '
                    + "\n      ".join(hide) + "\n    </div>")
@@ -114,14 +119,15 @@ def controls_html(cfg, area_names, listings):
     </div>
     <div class="ctl">
       <label class="h" for="fSort">Sort</label>
-      <select id="fSort"><option value="price">price, low first</option><option value="rating">rating, high first (weighted by review count)</option><option value="reviews">most reviews first</option></select>
-    </div>''')
+      <select id="fSort"><option value="price">price, low first</option><option value="rating">rating, high first (weighted by review count)</option><option value="reviews">most reviews first</option>{photo_sort}</select>
+    </div>'''.replace("{photo_sort}", '<option value="photos">best photos first</option>' if judged else ""))
     return "\n".join(out)
 
 
-def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key):
+def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key, judged=False):
     """cfg: checked config; listings: records from pipeline.listing_record; areas: {name: rings};
-    bbox: [s, w, n, e] that was searched; storage_key: names this page's localStorage entries."""
+    bbox: [s, w, n, e] that was searched; storage_key: names this page's localStorage entries;
+    judged: a judgements file was given, so the page gets the photo-check filter, sort and colours."""
     points = [p for rings in areas.values() for ring in rings for p in ring] \
         or [[bbox[0], bbox[1]], [bbox[2], bbox[3]]]
     points += [[d["lat"], d["lng"]] for d in listings]
@@ -139,12 +145,12 @@ def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key):
         "highlights": [r["label"] for r in cfg["rules"] if r["action"] == "highlight"],
         "rule_count": len(cfg["rules"]),
         "amenity_filters": cfg["amenity_filters"], "studio": bool(cfg["studio_pattern"]),
-        "stats": stats, "listings": listings,
+        "stats": stats, "listings": listings, "judged": judged,
     }
     tpl = TEMPLATE.read_text(encoding="utf-8")
     for marker in ("{{TITLE}}", "{{CONTROLS}}", "{{APP_JSON}}"):
         if tpl.count(marker) != 1:
             raise RuntimeError(f"template.html must contain {marker} exactly once")
-    values = {"TITLE": html.escape(cfg["title"]), "CONTROLS": controls_html(cfg, area_names, listings),
+    values = {"TITLE": html.escape(cfg["title"]), "CONTROLS": controls_html(cfg, area_names, listings, judged),
               "APP_JSON": embed_json(app)}
     return re.sub(r"\{\{(TITLE|CONTROLS|APP_JSON)\}\}", lambda m: values[m.group(1)], tpl)

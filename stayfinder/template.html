@@ -98,6 +98,8 @@ select{font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--lin
 .note-q.flag{background:var(--warn-soft);border-left-color:var(--warn)} .note-q.flag b{color:var(--warn)}
 .note-q.exclude{background:var(--brick-soft);border-left-color:var(--brick)} .note-q.exclude b{color:var(--brick)}
 .note-q.highlight{background:var(--ok-soft);border-left-color:var(--ok)} .note-q.highlight b{color:var(--ok)}
+.pv{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:13px}
+.pv .chip{flex-shrink:0}
 .cats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 12px;font-size:11.5px;color:var(--muted)}
 .cats div{display:flex;justify-content:space-between;gap:6px;font-variant-numeric:tabular-nums}
 .cats b{font-weight:500;color:var(--fg);font-family:var(--mono)}
@@ -164,7 +166,7 @@ const DATES = `${day(APP.checkin)} – ${day(APP.checkout)}`;
 
 // ---- filters: every control is generated from the config, see page.py ----
 const f = {price: $("fPrice"), rating: $("fRating"), unrated: $("fUnrated"), show: $("fShow"), sort: $("fSort"),
-  studio: $("fStudio")};
+  studio: $("fStudio"), photo: $("fPhoto")};
 const fArea = APP.areas.map((_, i) => $("fArea" + i));
 const fFlag = APP.flags.map((_, i) => $("fFlag" + i));
 const fHl = APP.highlights.map((_, i) => $("fHl" + i));
@@ -194,6 +196,18 @@ function toggleMark(kind, id) {
 }
 
 const has = (list, label) => list.some(h => h.label === label);
+// photo check (only when a judgements file was given): "ok" keeps great, ok and not checked; "great" keeps great only
+const verdict = d => d.photo ? d.photo.verdict : "unchecked";
+function photoPass(d, v) {
+  if (v === "all") return true;
+  if (v === "great") return verdict(d) === "great";
+  if (v === "ok") return verdict(d) !== "no";
+  throw new Error("unknown photo filter " + v);
+}
+const PHOTO_RANK = {great: 0, ok: 1, unchecked: 2, no: 3};
+const PHOTO_COL = {great: "var(--ok)", ok: "var(--warn)", unchecked: "var(--muted)", no: "var(--brick)"};
+const PHOTO_WORD = {great: "great", ok: "ok", unchecked: "not checked", no: "no"};
+const PHOTO_CHIP = {great: " good", ok: "", unchecked: "", no: " flag"};
 function passes(d) {
   const show = f.show.value;
   if (show === "excluded") return d.exclude.length > 0;
@@ -206,6 +220,7 @@ function passes(d) {
   if (d.rating === null) { if (!f.unrated.checked) return false; }
   else if (d.rating < +f.rating.value) return false;
   if (f.studio && f.studio.checked && d.studio) return false;
+  if (f.photo && !photoPass(d, f.photo.value)) return false;
   for (let i = 0; i < fFlag.length; i++) if (fFlag[i].checked && has(d.flag, APP.flags[i])) return false;
   for (let i = 0; i < fHl.length; i++) if (fHl[i].checked && !has(d.highlight, APP.highlights[i])) return false;
   for (let i = 0; i < fAm.length; i++) if (fAm[i].checked && !d.am[APP.amenity_filters[i]]) return false;
@@ -217,9 +232,10 @@ const sorters = {
   price: (a, b) => a.total - b.total,
   rating: (a, b) => confRating(b) - confRating(a) || b.reviews - a.reviews,
   reviews: (a, b) => b.reviews - a.reviews,
+  photos: (a, b) => PHOTO_RANK[verdict(a)] - PHOTO_RANK[verdict(b)] || a.total - b.total,
 };
 const CHEAP = APP.max_total * 0.8;
-const col = d => d.total <= CHEAP ? "var(--ok)" : "var(--warn)";
+const col = d => APP.judged ? PHOTO_COL[verdict(d)] : d.total <= CHEAP ? "var(--ok)" : "var(--warn)";
 const CATN = {CLEANLINESS: "Clean", ACCURACY: "Accuracy", CHECKIN: "Check-in", COMMUNICATION: "Comms", LOCATION: "Location", VALUE: "Value"};
 
 function card(d) {
@@ -233,6 +249,7 @@ function card(d) {
   if (d.rating === null) chips.push(`<span class="chip flag">No reviews yet</span>`);
   if (d.gf) chips.push(`<span class="chip good">Guest favourite</span>`);
   if (d.sh) chips.push(`<span class="chip good">Superhost</span>`);
+  const pv = APP.judged ? `<div class="pv"><span class="chip${PHOTO_CHIP[verdict(d)]}">Photos: ${PHOTO_WORD[verdict(d)]}</span>${d.photo ? `<span>${esc(d.photo.note)}</span>` : ""}</div>` : "";
   const am = APP.amenity_filters.filter(a => d.am[a]).map(a => `<span class="chip">${esc(a)}</span>`).join("");
   const SHOW = 12;
   const strip = d.photos.slice(0, SHOW).map(([u, lab], i) => `<button type="button" data-g="${esc(d.id)}" data-i="${i}" aria-label="Open photo ${i + 1}${lab ? ": " + esc(lab) : ""}"><img src="${esc(u)}?im_w=480" alt="${esc(lab || d.name)}" loading="lazy">${lab ? `<span>${esc(lab)}</span>` : ""}</button>`).join("")
@@ -250,7 +267,7 @@ function card(d) {
         <div class="price"><div class="t ${d.total <= CHEAP ? "ok" : "warn"}">${money(d.total)}</div>${d.before ? `<s>${money(d.before)}</s>` : ""}<div class="n">${money(d.total / APP.nights)}/night · ${plural(APP.nights, "night")}</div></div>
       </div>
       <div class="meta"><span>${rating}</span></div>
-      ${notes}
+      ${notes}${pv}
       ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
       ${cats ? `<div class="cats">${cats}</div>` : ""}${rooms}
       ${am ? `<div class="chips">${am}</div>` : ""}
@@ -365,12 +382,16 @@ $("stats").innerHTML = [
   `<span><b>${S.listed + S.below_min_rating}</b> under budget in the ${APP.areas.length ? "areas" : "map box"}, opened one by one</span>`,
   S.below_min_rating ? `<span><b>${S.below_min_rating}</b> rated below ${APP.min_rating} left out</span>` : "",
   `<span><b>${live.length}</b> shown after the exclude rules</span>`,
+  APP.judged ? `<span><b>${live.filter(d => d.photo).length}</b> photo-checked: ${["great", "ok", "no"].map(v => `${live.filter(d => verdict(d) === v).length} ${v}`).join(", ")}</span>` : "",
 ].join("");
-$("legend").innerHTML = `<span><i class="dot" style="background:var(--ok)"></i>≤ ${money(CHEAP)}</span><span><i class="dot" style="background:var(--warn)"></i>${money(CHEAP)} – ${money(APP.max_total)}</span><span><i class="dot" style="border:1.5px solid var(--off)"></i>hidden by a filter</span>`;
+$("legend").innerHTML = APP.judged
+  ? ["great", "ok", "no", "unchecked"].map(v => `<span><i class="dot" style="background:${PHOTO_COL[v]}"></i>photos: ${PHOTO_WORD[v]}</span>`).join("") + `<span><i class="dot" style="border:1.5px solid var(--off)"></i>hidden by a filter</span>`
+  : `<span><i class="dot" style="background:var(--ok)"></i>≤ ${money(CHEAP)}</span><span><i class="dot" style="background:var(--warn)"></i>${money(CHEAP)} – ${money(APP.max_total)}</span><span><i class="dot" style="border:1.5px solid var(--off)"></i>hidden by a filter</span>`;
 $("notes").innerHTML = [
   `Airbnb was searched for ${DATES}, ${plural(APP.adults, "adult")}, at most ${money(APP.max_total)} for the stay${APP.search_filters.length ? ", " + esc(APP.search_filters.join(", ")) : ""}. Prices are Airbnb's totals for the stay as shown in search, before taxes where Airbnb adds them at checkout.`,
   APP.areas.length ? `A listing's area comes from its map pin, checked against the OpenStreetMap outline of each area. Pins are approximate, so a pin up to ${APP.border_tolerance_km} km outside an outline still counts. ${S.outside_areas} search results lay further out and were left out.` : `Listings come from the map box given in the config; ${S.outside_areas} search results fell outside it.`,
   APP.rule_count ? `Exclude, warning and highlight notes come from keyword rules run over the title, description and house rules, in English and in the host's own language. Keyword rules can miss a rule written in other words, or misread one: read the quote. ${S.excluded} listings were excluded (pick "Show: excluded by rules" to see them with the host's words).` : "",
+  APP.judged ? `Photo verdicts (great / ok / no) are a judgement made from the first photos of each listing, which the host chose. Hosts often show the building's shared rooftop, pool, gym or lobby, and views from the roof, as if they were the flat; verdicts try to judge only the unit itself, but open the full photo tour and the listing before you decide. "Not checked" places were not judged and are kept by the default photo filter.` : "",
   APP.studio ? `"Studio / loft" means the title or Airbnb's overview matches the studio pattern in the config. Check the photos: many studios are listed as "1 bedroom".` : "",
   `Availability: each place came up in Airbnb's search for these dates when it was searched. That is not a confirmed booking. Open the listing with the dates before you message the host.`,
   `Favourites and deletions are saved in this browser only.`,

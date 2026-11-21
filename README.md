@@ -8,6 +8,7 @@ say something you can't live with, and get **one local HTML page** to choose fro
 - favourites and deletions saved in your browser
 - the full photo tour of every listing (with room names), category ratings, description and house rules
 - for every rule that fired, the host's own words, so you can judge it yourself
+- optionally, a photo check: a verdict and a one-line note per listing from looking at its photos
 
 It reads Airbnb's public search and listing pages, the same HTML a browser gets. It does not log in,
 book, or contact anyone. Python 3.10+, standard library only.
@@ -20,7 +21,7 @@ python -m stayfinder run my-trip.json      # search, open each listing, build th
 open out/lisbon-week.html                  # or whatever "output" says
 ```
 
-After changing only rules, `studio_pattern`, `amenity_filters`, `min_rating` or `title`, rebuild
+After changing only rules, `studio_pattern`, `amenity_filters`, `min_rating`, `judgements` or `title`, rebuild
 without touching Airbnb:
 
 ```sh
@@ -31,6 +32,39 @@ python -m stayfinder build my-trip.json
 Use `python -m stayfinder run my-trip.json --refresh` to download everything again (new prices and
 availability). If you change the search itself (areas, dates, guests, budget, currency, `entire_place`,
 `amenity_ids`, `border_tolerance_km`), `build` refuses and tells you to `run` again.
+
+## Photo check
+
+Keyword rules cannot see light, views or space. For that, download a few photos of every listing on the
+page (not excluded by rules) and judge them, by eye or with an AI agent that can read images:
+
+```sh
+python -m stayfinder photos my-trip.json            # first 12 photos per listing; --max N for another number
+```
+
+Photos are saved small (480 px wide) as `.cache/photos/<listing id>/<nn>-<room name>.jpg`, with
+`.cache/photos/index.json` listing per id the name, area, price, overview (bedrooms, beds, baths), how
+many photos the full tour has, and each file with its room label. Files already there are not fetched
+again. Then write the verdicts to a JSON file:
+
+```json
+{
+  "123456": {"verdict": "great", "note": "Both rooms have big windows with direct sun; open view over low roofs."},
+  "234567": {"verdict": "no", "note": "Bedroom window faces a wall a metre away; the view shots are from the shared rooftop."}
+}
+```
+
+point `judgements` in the config at it, and run `build`. Each card shows "Photos: great / ok / no / not
+checked" and the note, map dots are coloured by verdict, and the page gets a "Photo check" filter
+(great + ok, great only, everything; listings without a verdict pass the default) and a "best photos
+first" sort. Without `judgements` the page is exactly as before.
+
+**Hosts often show the building, not the flat.** Rooftop terraces, pools, gyms, lobbies, coworking
+rooms, gardens and views shot from the shared roof appear in many photo tours next to the unit's own
+rooms. Judge light, view and space only from photos clearly taken inside the unit or from its own
+balcony. Also watch for wide-angle lenses, a "1 bedroom" that is a studio with a curtain, windows onto
+a wall or shaft, night shots hiding a dark room, and photos of a different unit in the same building.
+A verdict is a judgement from photos the host chose, not an inspection.
 
 ## How it works
 
@@ -46,8 +80,8 @@ availability). If you change the search itself (areas, dates, guests, budget, cu
 4. **Rules** run over the title, description and house rules, in English and in the host's language.
 5. **Page.** Everything is embedded as JSON in one HTML file; it needs no server.
 
-Requests are polite: at least 0.5 s between Airbnb requests (4 listing pages at a time at most) and
-1 request per second to Nominatim.
+Requests are polite: at least 0.5 s between Airbnb requests (4 listing pages at a time at most),
+at least 0.2 s between photo downloads (4 at a time at most), and 1 request per second to Nominatim.
 
 ## Config reference
 
@@ -69,6 +103,7 @@ Requests are polite: at least 0.5 s between Airbnb requests (4 listing pages at 
 | `studio_pattern` | no | regular expression; a listing whose title, property type or overview matches is marked "studio / loft" and can be hidden |
 | `amenity_filters` | no (`[]`) | amenity names that become "must have" checkboxes. Matching is case-insensitive and by substring: `"Washer"` matches `"Free washer – In unit"`. `build` prints a note when no listing matches a name. |
 | `max_listings` | no (300) | stop before opening more listing pages than this; lower the budget or areas, or raise it |
+| `judgements` | no | photo verdicts for `build`: path of a JSON file (relative to the config), or a list of such files that are merged. See "Photo check". Ids not on the page, verdicts other than `great`/`ok`/`no`, or a listing judged twice are errors. |
 
 Keys starting with `_` are ignored, so you can use `"_comment"`. Unknown keys are an error, and all
 problems in a config are reported at once.
@@ -99,6 +134,8 @@ problems in a config are reported at once.
   open the listing with your dates before you message the host.
 - **Prices** are Airbnb's stay totals as shown in search, before taxes where Airbnb adds them at checkout.
 - **Map pins are approximate**, so a place near a border may really be on the other side.
+- **Photo verdicts** come from the photos the host chose (only the first ones), which can flatter the
+  place or show shared parts of the building as if they were the flat.
 - **Airbnb can change its page format at any time.** When it does, stay-finder stops with an error
   naming what is missing instead of guessing. Fixes go in `stayfinder/airbnb.py`.
 - **Respect Airbnb's terms.** This is for your own trip planning at low volume: one search, a few
@@ -112,7 +149,8 @@ python -m unittest discover -s tests
 ```
 
 They run offline on small hand-made fixtures. If `node` is installed, the page's script is also run
-against a stub DOM and every filter, favourites, the photo viewer and the map are exercised.
+against a stub DOM and every filter (including the photo check), favourites, the photo viewer and the
+map are exercised.
 `node tests/page_harness.js out/your-page.html` runs the same checks on a page you built.
 
 ## Use with Claude Code

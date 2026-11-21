@@ -16,6 +16,7 @@ OPTIONAL = {  # key: default when the key is left out
     "studio_pattern": None,
     "amenity_filters": [],
     "max_listings": 300,
+    "judgements": None,
 }
 WHERE = ("areas", "bbox")  # exactly one of these
 SEARCH_KEYS = ("areas", "bbox", "checkin", "checkout", "adults", "currency", "max_total",
@@ -121,6 +122,12 @@ def validate(raw, today=None, allow_past=False):
         errs.append("amenity_filters: must be a list of amenity names, e.g. [\"Washer\", \"Dedicated workspace\"]")
     elif len({x.lower() for x in af}) != len(af):
         errs.append("amenity_filters: an amenity is listed twice")
+    j = cfg["judgements"]
+    if j is not None and not (
+            (isinstance(j, str) and j.endswith(".json"))
+            or (isinstance(j, list) and j and all(isinstance(x, str) and x.endswith(".json") for x in j))):
+        errs.append("judgements: must be the path of a .json file (relative to the config), "
+                    "or a non-empty list of such paths")
     try:
         compile_rules(cfg["rules"])
     except ValueError as e:
