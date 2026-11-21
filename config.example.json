@@ -1,0 +1,30 @@
+{
+  "_comment": "Copy this file, edit it, then run: python -m stayfinder run my-trip.json",
+  "title": "A week in Alfama or Graça",
+  "areas": ["Alfama, Lisbon, Portugal", "Graça, Lisbon, Portugal"],
+  "checkin": "2027-03-08",
+  "checkout": "2027-03-15",
+  "adults": 2,
+  "currency": "EUR",
+  "max_total": 700,
+  "entire_place": true,
+  "amenity_ids": [4, 8],
+  "min_rating": 4.3,
+  "border_tolerance_km": 0.15,
+  "studio_pattern": "\\b(studio|loft|kitchenette)\\b",
+  "amenity_filters": ["Washer", "Dedicated workspace", "Air conditioning"],
+  "rules": [
+    {"label": "No pets", "action": "flag",
+     "pattern": "\\b(no pets|pets? (are )?not allowed|animais não)\\b"},
+    {"label": "Pets welcome", "action": "highlight",
+     "pattern": "\\b(pets? (are )?(welcome|allowed)|pet[- ]friendly)\\b", "unless": "\\bnot\\b"},
+    {"label": "Balcony or terrace", "action": "highlight",
+     "pattern": "\\b(balcon(y|ies)|terrace|varanda|terraço)\\b"},
+    {"label": "Stairs only, no lift", "action": "flag",
+     "pattern": "\\b(no (lift|elevator)|without (a )?(lift|elevator)|sem elevador)\\b"},
+    {"label": "Shared bathroom", "action": "exclude",
+     "pattern": "\\bshared bath(room)?\\b"}
+  ],
+  "max_listings": 300,
+  "output": "out/lisbon-week.html"
+}

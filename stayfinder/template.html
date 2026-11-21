@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: filter bar on top, then a sticky map on the left and a scrolling list of listing cards on the right; stacks on phones. */
+:root{
+  --bg:#f3f4f2; --panel:#ffffff; --fg:#1d2321; --muted:#5d6763; --line:#d9dedb;
+  --brick:#a8452c; --brick-soft:#f4e3dc;
+  --ok:#2f7a55; --ok-soft:#dcefe4; --warn:#a36a12; --warn-soft:#f6ead2; --off:#9aa39f;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --panel:#1c2220; --fg:#e7ebe9; --muted:#9aa5a0; --line:#2f3734;
+  --brick:#e0795c; --brick-soft:#3a241d; --ok:#5fc08f; --ok-soft:#1d3329; --warn:#e2a64a; --warn-soft:#3a2e18; --off:#5c6662; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --panel:#1c2220; --fg:#e7ebe9; --muted:#9aa5a0; --line:#2f3734;
+  --brick:#e0795c; --brick-soft:#3a241d; --ok:#5fc08f; --ok-soft:#1d3329; --warn:#e2a64a; --warn-soft:#3a2e18; --off:#5c6662; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4.4vw,44px);line-height:1.05;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:17px;margin:0}
+.lede{color:var(--muted);max-width:72ch;margin:6px 0 0}
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.stats b{color:var(--fg);font-weight:500}
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 22px}
+.ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ctl .h{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.ctl .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctl output{font-family:var(--mono);font-size:13px;min-width:6ch}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--brick)}
+select{font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);max-width:100%}
+.chk{display:flex;align-items:flex-start;gap:6px;font-size:14px;cursor:pointer}
+.chk input{accent-color:var(--brick);margin-top:4px}
+:focus-visible{outline:2px solid var(--brick);outline-offset:2px}
+.main{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+.mapbox{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.mapbox svg{width:100%;height:auto;display:block;max-height:calc(100vh - 140px)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.list{display:flex;flex-direction:column;gap:12px;min-width:0}
+.count{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;scroll-margin-top:16px;transition:box-shadow .2s,border-color .2s}
+.card.hl,.card:hover{border-color:var(--brick);box-shadow:0 0 0 2px var(--brick)}
+.card.isfav{border-color:var(--fg)}
+.card.isdel{opacity:.6}
+.strip{display:flex;gap:3px;overflow-x:auto;scroll-snap-type:x proximity;background:var(--bg);scrollbar-width:thin}
+.strip button{flex:0 0 auto;padding:0;border:0;background:none;cursor:zoom-in;position:relative;scroll-snap-align:start}
+.strip img{height:170px;width:auto;max-width:none;display:block;background:var(--line)}
+.strip button span{position:absolute;left:5px;bottom:5px;font-size:10.5px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.62);color:#fff;letter-spacing:.02em}
+.strip .more{display:flex;align-items:center;justify-content:center;padding:0 18px;font-size:13px;color:var(--fg);background:var(--panel);min-width:90px}
+.pt.hov{stroke:var(--brick);stroke-width:3}
+.pt.fav{stroke:var(--fg);stroke-width:2.5}
+.ring-hl{fill:none;stroke:var(--brick);stroke-width:2;pointer-events:none}
+.warnbar{background:var(--brick-soft);color:var(--brick);border-radius:8px;padding:10px 14px;font-weight:600;font-size:14px}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.acts button{font:inherit;font-size:12.5px;padding:3px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+.acts button:hover{border-color:var(--brick)}
+.acts button.on{background:var(--brick);border-color:var(--brick);color:var(--panel)}
+.acts a{font-size:12.5px;color:var(--brick)}
+.lb{position:fixed;inset:0;z-index:50;background:rgba(10,12,11,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 12px) max(16px,env(safe-area-inset-left,0px))}
+.lb img{max-width:100%;max-height:calc(100% - 90px);object-fit:contain;border-radius:4px}
+.lb .cap{color:#e7ebe9;font-size:14px;text-align:center;max-width:70ch}
+.lb .cap b{font-family:var(--display)}
+.lb .navs{display:flex;gap:10px}
+.lb button{font:inherit;font-size:14px;color:#e7ebe9;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:6px 14px;cursor:pointer}
+.lb button:hover{background:rgba(255,255,255,.22)}
+.cb{padding:12px 14px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.nm{font-weight:600;font-size:15.5px;line-height:1.3;margin:0}
+.nm a{color:inherit;text-decoration:none}
+.nm a:hover{text-decoration:underline}
+.sub{font-size:13px;color:var(--muted)}
+.price{text-align:right;flex-shrink:0;font-family:var(--mono)}
+.price .t{font-size:20px;font-weight:500;line-height:1.1}
+.price .t.ok{color:var(--ok)} .price .t.warn{color:var(--warn)}
+.price .n{font-size:12px;color:var(--muted)}
+.price s{font-size:12px;color:var(--muted)}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;font-family:var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:11.5px;padding:2px 7px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted);white-space:normal}
+.chip.flag{background:var(--brick-soft);border-color:transparent;color:var(--brick);font-weight:600}
+.chip.good{background:var(--ok-soft);border-color:transparent;color:var(--ok);font-weight:600}
+.note-q{border-radius:6px;padding:7px 10px;font-size:13px;border-left:3px solid}
+.note-q b{font-weight:600}
+.note-q span{color:var(--muted)}
+.note-q.flag{background:var(--warn-soft);border-left-color:var(--warn)} .note-q.flag b{color:var(--warn)}
+.note-q.exclude{background:var(--brick-soft);border-left-color:var(--brick)} .note-q.exclude b{color:var(--brick)}
+.note-q.highlight{background:var(--ok-soft);border-left-color:var(--ok)} .note-q.highlight b{color:var(--ok)}
+.cats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 12px;font-size:11.5px;color:var(--muted)}
+.cats div{display:flex;justify-content:space-between;gap:6px;font-variant-numeric:tabular-nums}
+.cats b{font-weight:500;color:var(--fg);font-family:var(--mono)}
+.cats .lo b{color:var(--brick)}
+details{font-size:13px;color:var(--muted)}
+details summary{cursor:pointer;color:var(--fg);font-size:12.5px}
+details p{margin:6px 0 0;max-width:70ch;white-space:pre-line}
+.empty{padding:28px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:10px}
+.notes{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:14px}
+.notes ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:5px;max-width:90ch}
+svg text{font-family:var(--body)}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}.mapbox{position:static}}
+@media (max-width:520px){.strip img{height:140px}.cats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title"></h1>
+    <p class="lede" id="lede"></p>
+  </header>
+  <div class="stats" id="stats"></div>
+  <div class="warnbar" id="storeWarn" hidden>Your browser is blocking saved data for this file, so favourites, deletions and filters will be lost when you reload.</div>
+
+  <section class="controls" aria-label="Filters">
+{{CONTROLS}}
+  </section>
+
+  <div class="main">
+    <aside class="mapbox" aria-label="Map">
+      <svg id="map" role="img" aria-label="Positions of the listings"></svg>
+      <div class="legend" id="legend"></div>
+      <div class="sub">North is up. Pins are approximate. Hover a card to find it on the map, or click a dot to jump to its card.</div>
+    </aside>
+    <section class="list" aria-label="Listings">
+      <div class="count" id="count"></div>
+      <div id="cards" class="list"></div>
+    </section>
+  </div>
+
+  <div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo viewer">
+    <img id="lbImg" alt="">
+    <div class="cap" id="lbCap"></div>
+    <div class="navs"><button id="lbPrev" type="button">← Prev</button><button id="lbClose" type="button">Close (Esc)</button><button id="lbNext" type="button">Next →</button></div>
+  </div>
+
+  <section class="notes" aria-label="How this list was made">
+    <h2>How this list was made</h2>
+    <ul id="notes"></ul>
+  </section>
+</div>
+
+<script>
+const APP = {{APP_JSON}};
+const DATA = APP.listings;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const MONEY = new Intl.NumberFormat("en", {style: "currency", currency: APP.currency, maximumFractionDigits: 0});
+const money = v => MONEY.format(v);
+const day = s => new Date(s + "T00:00:00").toLocaleDateString("en", {month: "short", day: "numeric", year: "numeric"});
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const DATES = `${day(APP.checkin)} – ${day(APP.checkout)}`;
+
+// ---- filters: every control is generated from the config, see page.py ----
+const f = {price: $("fPrice"), rating: $("fRating"), unrated: $("fUnrated"), show: $("fShow"), sort: $("fSort"),
+  studio: $("fStudio")};
+const fArea = APP.areas.map((_, i) => $("fArea" + i));
+const fFlag = APP.flags.map((_, i) => $("fFlag" + i));
+const fHl = APP.highlights.map((_, i) => $("fHl" + i));
+const fAm = APP.amenity_filters.map((_, i) => $("fAm" + i));
+const ALL_CTL = [...Object.values(f), ...fArea, ...fFlag, ...fHl, ...fAm].filter(Boolean);
+
+// ---- favourites and deletions, kept in this browser ----
+const MARK_KEY = APP.key + ":marks", FKEY = APP.key + ":filters";
+let marks = {fav: [], del: []}, storeOk = true;
+function storeFail(e) { storeOk = false; $("storeWarn").hidden = false; console.error("Saving to localStorage failed:", e); }
+try {
+  const s = localStorage.getItem(MARK_KEY);
+  if (s) {
+    const p = JSON.parse(s);
+    if (!Array.isArray(p.fav) || !Array.isArray(p.del)) throw new Error("saved marks have the wrong shape");
+    marks = p;
+  }
+  localStorage.setItem(MARK_KEY, JSON.stringify(marks));
+} catch (e) { storeFail(e); }
+const isFav = id => marks.fav.includes(id), isDel = id => marks.del.includes(id);
+function toggleMark(kind, id) {
+  const other = kind === "fav" ? "del" : "fav";
+  marks[kind] = marks[kind].includes(id) ? marks[kind].filter(x => x !== id) : [...marks[kind], id];
+  if (marks[kind].includes(id)) marks[other] = marks[other].filter(x => x !== id);
+  try { localStorage.setItem(MARK_KEY, JSON.stringify(marks)); } catch (e) { storeFail(e); }
+  render();
+}
+
+const has = (list, label) => list.some(h => h.label === label);
+function passes(d) {
+  const show = f.show.value;
+  if (show === "excluded") return d.exclude.length > 0;
+  if (d.exclude.length) return false;
+  if (show === "deleted") return isDel(d.id);
+  if (isDel(d.id)) return false;
+  if (show === "fav") return isFav(d.id);
+  if (d.area !== null && fArea.length && !fArea[APP.areas.findIndex(a => a.name === d.area)].checked) return false;
+  if (d.total > +f.price.value) return false;
+  if (d.rating === null) { if (!f.unrated.checked) return false; }
+  else if (d.rating < +f.rating.value) return false;
+  if (f.studio && f.studio.checked && d.studio) return false;
+  for (let i = 0; i < fFlag.length; i++) if (fFlag[i].checked && has(d.flag, APP.flags[i])) return false;
+  for (let i = 0; i < fHl.length; i++) if (fHl[i].checked && !has(d.highlight, APP.highlights[i])) return false;
+  for (let i = 0; i < fAm.length; i++) if (fAm[i].checked && !d.am[APP.amenity_filters[i]]) return false;
+  return true;
+}
+// rating weighted by how many reviews back it: 3 reviews at 5.0 rank below 200 reviews at 4.9
+const confRating = d => d.rating === null ? 0 : 4.5 + (d.rating - 4.5) * Math.min(d.reviews, 30) / 30;
+const sorters = {
+  price: (a, b) => a.total - b.total,
+  rating: (a, b) => confRating(b) - confRating(a) || b.reviews - a.reviews,
+  reviews: (a, b) => b.reviews - a.reviews,
+};
+const CHEAP = APP.max_total * 0.8;
+const col = d => d.total <= CHEAP ? "var(--ok)" : "var(--warn)";
+const CATN = {CLEANLINESS: "Clean", ACCURACY: "Accuracy", CHECKIN: "Check-in", COMMUNICATION: "Comms", LOCATION: "Location", VALUE: "Value"};
+
+function card(d) {
+  const notes = [
+    ...d.exclude.map(h => `<div class="note-q exclude"><b>Excluded: ${esc(h.label)}.</b> <span>Host's words: “${esc(h.quote)}”</span></div>`),
+    ...d.flag.map(h => `<div class="note-q flag"><b>${esc(h.label)}.</b> <span>Host's words: “${esc(h.quote)}”</span></div>`),
+    ...d.highlight.map(h => `<div class="note-q highlight"><b>${esc(h.label)}.</b> <span>“${esc(h.quote)}”</span></div>`),
+  ].join("");
+  const chips = [];
+  if (d.studio) chips.push(`<span class="chip flag">Studio / loft: “${esc(d.studio)}”</span>`);
+  if (d.rating === null) chips.push(`<span class="chip flag">No reviews yet</span>`);
+  if (d.gf) chips.push(`<span class="chip good">Guest favourite</span>`);
+  if (d.sh) chips.push(`<span class="chip good">Superhost</span>`);
+  const am = APP.amenity_filters.filter(a => d.am[a]).map(a => `<span class="chip">${esc(a)}</span>`).join("");
+  const SHOW = 12;
+  const strip = d.photos.slice(0, SHOW).map(([u, lab], i) => `<button type="button" data-g="${esc(d.id)}" data-i="${i}" aria-label="Open photo ${i + 1}${lab ? ": " + esc(lab) : ""}"><img src="${esc(u)}?im_w=480" alt="${esc(lab || d.name)}" loading="lazy">${lab ? `<span>${esc(lab)}</span>` : ""}</button>`).join("")
+    + (d.photos.length > SHOW ? `<button type="button" class="more" data-g="${esc(d.id)}" data-i="${SHOW}">+${d.photos.length - SHOW} more</button>` : "");
+  const rooms = d.rooms.length ? `<div class="sub">Photo tour: ${d.rooms.map(esc).join(", ")}</div>` : "";
+  const cats = d.rating !== null ? Object.entries(CATN).filter(([k]) => d.cats[k]).map(([k, n]) => `<div class="${+d.cats[k] < 4.6 ? "lo" : ""}"><span>${n}</span><b>${esc(d.cats[k])}</b></div>`).join("") : "";
+  const rating = d.rating !== null ? `★ ${d.rating.toFixed(2)} · ${plural(d.reviews, "review")}` : "No reviews yet";
+  const where = [esc(d.kind), d.area ? `<b>${esc(d.area)}</b>` : "", esc(d.overview.join(" · "))].filter(Boolean).join(" · ");
+  return `<article class="card${isFav(d.id) ? " isfav" : ""}${isDel(d.id) ? " isdel" : ""}" id="c${esc(d.id)}" data-id="${esc(d.id)}">
+    <div class="strip">${strip}</div>
+    <div class="cb">
+      <div class="top"><div style="min-width:0">
+        <p class="nm"><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.name)}</a></p>
+        <div class="sub">${where}</div></div>
+        <div class="price"><div class="t ${d.total <= CHEAP ? "ok" : "warn"}">${money(d.total)}</div>${d.before ? `<s>${money(d.before)}</s>` : ""}<div class="n">${money(d.total / APP.nights)}/night · ${plural(APP.nights, "night")}</div></div>
+      </div>
+      <div class="meta"><span>${rating}</span></div>
+      ${notes}
+      ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+      ${cats ? `<div class="cats">${cats}</div>` : ""}${rooms}
+      ${am ? `<div class="chips">${am}</div>` : ""}
+      <div class="acts"><button type="button" data-mark="fav" data-id="${esc(d.id)}" class="${isFav(d.id) ? "on" : ""}" aria-pressed="${isFav(d.id)}">${isFav(d.id) ? "★ Favourite" : "☆ Favourite"}</button><button type="button" data-mark="del" data-id="${esc(d.id)}">${isDel(d.id) ? "Restore" : "✕ Delete"}</button><a href="${esc(d.url)}" target="_blank" rel="noopener">Open on Airbnb ↗</a></div>
+      <details><summary>Description</summary><p>${esc(d.desc) || "The host wrote no description."}</p></details>
+      <details><summary>House rules</summary><p>${esc(d.rules.join("\n")) || "No house rules listed."}</p></details>
+      <details><summary>All amenities (${d.amenities.length})</summary><p>${esc(d.amenities.join(" · "))}</p></details>
+    </div></article>`;
+}
+
+// ---- map: flat projection in km around the centre, fitted to the areas and listings in page.py ----
+const M = APP.map;
+const px = ([la, lo]) => [M.W / 2 + (lo - M.c[1]) * M.kx * M.s, M.H / 2 - (la - M.c[0]) * M.ky * M.s];
+const pts = ring => ring.map(p => px(p).map(v => v.toFixed(1)).join(",")).join(" ");
+$("map").setAttribute("viewBox", `0 0 ${M.W} ${M.H}`);
+function drawMap(shown) {
+  const set = new Set(shown.map(d => d.id));
+  const g = [];
+  const step = M.grid * M.s;
+  for (let x = M.W / 2 % step; x <= M.W; x += step) g.push(`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${M.H}" stroke="var(--line)" stroke-width="0.6"/>`);
+  for (let y = M.H / 2 % step; y <= M.H; y += step) g.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${M.W}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="0.6"/>`);
+  APP.areas.forEach((a, i) => {
+    const on = fArea[i].checked;
+    for (const ring of a.rings) g.push(`<polygon points="${pts(ring)}" fill="${on ? "var(--brick-soft)" : "none"}" fill-opacity="0.55" stroke="var(--brick)" stroke-width="1.4" stroke-dasharray="${on ? "" : "3 4"}" opacity="0.9"/>`);
+  });
+  if (!APP.areas.length) {
+    const [s, w, n, e] = APP.bbox;
+    g.push(`<polygon points="${pts([[s, w], [s, e], [n, e], [n, w]])}" fill="none" stroke="var(--brick)" stroke-width="1.2" stroke-dasharray="3 4"/>`);
+  }
+  for (const [la, lo, name] of APP.labels) {
+    const [x, y] = px([la, lo]);
+    g.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="12" font-weight="700" letter-spacing=".08em" fill="var(--brick)" text-anchor="middle" opacity="0.85">${esc(name.toUpperCase())}</text>`);
+  }
+  g.push(`<line x1="16" y1="${M.H - 18}" x2="${(16 + step).toFixed(1)}" y2="${M.H - 18}" stroke="var(--fg)" stroke-width="2"/><text x="${(22 + step).toFixed(1)}" y="${M.H - 14}" font-size="11" fill="var(--muted)">${M.grid < 1 ? M.grid * 1000 + " m" : M.grid + " km"}</text>`);
+  const excludedView = f.show.value === "excluded";
+  const all = DATA.filter(d => excludedView || !d.exclude.length).sort((a, b) => set.has(a.id) - set.has(b.id));
+  for (const d of all) {
+    const [x, y] = px([d.lat, d.lng]);
+    if (set.has(d.id)) g.push(`<circle class="pt${isFav(d.id) ? " fav" : ""}" id="p${esc(d.id)}" data-id="${esc(d.id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${col(d)}" stroke="var(--panel)" stroke-width="1.5" style="cursor:pointer"><title>${esc(d.name)} · ${money(d.total)}</title></circle>`);
+    else g.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="none" stroke="var(--off)" stroke-width="1.2"/>`);
+  }
+  g.push(`<circle id="ringHl" class="ring-hl" r="16" cx="-50" cy="-50"/>`);
+  $("map").innerHTML = g.join("");
+  $("map").querySelectorAll(".pt").forEach(c => {
+    c.addEventListener("mouseenter", () => { hoverOn(c.dataset.id, false); $("c" + c.dataset.id)?.classList.add("hl"); });
+    c.addEventListener("mouseleave", () => { hoverOff(); $("c" + c.dataset.id)?.classList.remove("hl"); });
+    c.addEventListener("click", () => {
+      const el = $("c" + c.dataset.id); if (!el) return;
+      document.querySelectorAll(".card.hl").forEach(e => e.classList.remove("hl"));
+      el.classList.add("hl");
+      el.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"});
+    });
+  });
+}
+function hoverOn(id, raise = true) {
+  const p = $("p" + id); if (!p) return;
+  p.classList.add("hov"); p.setAttribute("r", 10);
+  if (raise) p.parentNode.appendChild(p);
+  const r = $("ringHl"); r.setAttribute("cx", p.getAttribute("cx")); r.setAttribute("cy", p.getAttribute("cy"));
+  if (raise) r.parentNode.appendChild(r);
+}
+function hoverOff() {
+  $("map").querySelectorAll(".pt.hov").forEach(p => { p.classList.remove("hov"); p.setAttribute("r", 6); });
+  const r = $("ringHl"); if (r) { r.setAttribute("cx", -50); r.setAttribute("cy", -50); }
+}
+$("cards").addEventListener("mouseover", e => { const c = e.target.closest(".card"); if (c && !c.contains(e.relatedTarget)) { hoverOff(); hoverOn(c.dataset.id); } });
+$("cards").addEventListener("mouseout", e => { const c = e.target.closest(".card"); if (c && !c.contains(e.relatedTarget)) hoverOff(); });
+
+// ---- photo viewer ----
+const BYID = Object.fromEntries(DATA.map(d => [d.id, d]));
+let lbD = null, lbI = 0;
+function lbShow() {
+  const [u, lab] = lbD.photos[lbI];
+  $("lbImg").src = u + "?im_w=1200"; $("lbImg").alt = lab || lbD.name;
+  $("lbCap").innerHTML = `<b>${esc(lbD.name)}</b> · ${lab ? esc(lab) + " · " : ""}${lbI + 1} / ${lbD.photos.length} · ${money(lbD.total)}`;
+  const nx = lbD.photos[(lbI + 1) % lbD.photos.length]; new Image().src = nx[0] + "?im_w=1200";
+}
+function lbOpen(id, i) { lbD = BYID[id]; lbI = i; $("lb").hidden = false; lbShow(); $("lbNext").focus(); }
+function lbClose() { $("lb").hidden = true; $("lbImg").src = ""; }
+const lbStep = s => { lbI = (lbI + s + lbD.photos.length) % lbD.photos.length; lbShow(); };
+$("cards").addEventListener("click", e => {
+  const b = e.target.closest("button[data-g]"); if (b) return lbOpen(b.dataset.g, +b.dataset.i);
+  const m = e.target.closest("button[data-mark]"); if (m) toggleMark(m.dataset.mark, m.dataset.id);
+});
+$("lbPrev").onclick = () => lbStep(-1); $("lbNext").onclick = () => lbStep(1); $("lbClose").onclick = lbClose;
+$("lb").addEventListener("click", e => { if (e.target === $("lb")) lbClose(); });
+$("lbImg").addEventListener("click", () => lbStep(1));
+document.addEventListener("keydown", e => {
+  if ($("lb").hidden) return;
+  if (e.key === "Escape") lbClose(); else if (e.key === "ArrowRight") lbStep(1); else if (e.key === "ArrowLeft") lbStep(-1);
+});
+
+// ---- render ----
+function render() {
+  $("oPrice").textContent = money(+f.price.value);
+  const shown = DATA.filter(passes).sort(sorters[f.sort.value]);
+  $("count").textContent = `${plural(shown.length, "place")} match`;
+  $("markInfo").textContent = `${plural(marks.fav.length, "favourite")} · ${marks.del.length} deleted`;
+  $("cards").innerHTML = shown.length ? shown.map(card).join("") : `<div class="empty">Nothing matches these filters.</div>`;
+  drawMap(shown);
+  try { localStorage.setItem(FKEY, JSON.stringify(Object.fromEntries(ALL_CTL.map(e => [e.id, e.type === "checkbox" ? e.checked : e.value])))); }
+  catch (e) { storeFail(e); }
+}
+
+const S = APP.stats, live = DATA.filter(d => !d.exclude.length);
+$("title").textContent = APP.title;
+$("lede").textContent = `${DATES} · ${plural(APP.nights, "night")} · ${plural(APP.adults, "adult")} · at most ${money(APP.max_total)} for the stay`
+  + (APP.areas.length ? ` · ${APP.areas.map(a => a.name).join(", ")}` : "") + `. Searched ${day(APP.searched_at.slice(0, 10))}. Click any photo for the full photo tour.`;
+$("stats").innerHTML = [
+  `<span><b>${S.search_results}</b> found by Airbnb's search</span>`,
+  S.not_returned ? `<span>up to <b>${S.not_returned}</b> more counted by Airbnb but not returned</span>` : "",
+  `<span><b>${S.listed + S.below_min_rating}</b> under budget in the ${APP.areas.length ? "areas" : "map box"}, opened one by one</span>`,
+  S.below_min_rating ? `<span><b>${S.below_min_rating}</b> rated below ${APP.min_rating} left out</span>` : "",
+  `<span><b>${live.length}</b> shown after the exclude rules</span>`,
+].join("");
+$("legend").innerHTML = `<span><i class="dot" style="background:var(--ok)"></i>≤ ${money(CHEAP)}</span><span><i class="dot" style="background:var(--warn)"></i>${money(CHEAP)} – ${money(APP.max_total)}</span><span><i class="dot" style="border:1.5px solid var(--off)"></i>hidden by a filter</span>`;
+$("notes").innerHTML = [
+  `Airbnb was searched for ${DATES}, ${plural(APP.adults, "adult")}, at most ${money(APP.max_total)} for the stay${APP.search_filters.length ? ", " + esc(APP.search_filters.join(", ")) : ""}. Prices are Airbnb's totals for the stay as shown in search, before taxes where Airbnb adds them at checkout.`,
+  APP.areas.length ? `A listing's area comes from its map pin, checked against the OpenStreetMap outline of each area. Pins are approximate, so a pin up to ${APP.border_tolerance_km} km outside an outline still counts. ${S.outside_areas} search results lay further out and were left out.` : `Listings come from the map box given in the config; ${S.outside_areas} search results fell outside it.`,
+  APP.rule_count ? `Exclude, warning and highlight notes come from keyword rules run over the title, description and house rules, in English and in the host's own language. Keyword rules can miss a rule written in other words, or misread one: read the quote. ${S.excluded} listings were excluded (pick "Show: excluded by rules" to see them with the host's words).` : "",
+  APP.studio ? `"Studio / loft" means the title or Airbnb's overview matches the studio pattern in the config. Check the photos: many studios are listed as "1 bedroom".` : "",
+  `Availability: each place came up in Airbnb's search for these dates when it was searched. That is not a confirmed booking. Open the listing with the dates before you message the host.`,
+  `Favourites and deletions are saved in this browser only.`,
+].filter(Boolean).map(t => `<li>${t}</li>`).join("");
+
+try {
+  const s = JSON.parse(localStorage.getItem(FKEY) || "null");
+  if (s) for (const e of ALL_CTL) {
+    if (!(e.id in s)) continue;
+    if (e.type === "checkbox") e.checked = !!s[e.id];
+    else if (e.tagName !== "SELECT" || [...e.options].some(o => o.value === String(s[e.id]))) e.value = s[e.id];
+  }
+} catch (e) { storeFail(e); }
+ALL_CTL.forEach(e => e.addEventListener("input", render));
+render();
+</script>
+</body>
+</html>
