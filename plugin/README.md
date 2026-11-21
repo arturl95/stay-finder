@@ -62,6 +62,21 @@ machine. It does not book or contact anyone.
 - Airbnb can change its page format; the skill then stops and names what is missing.
 - For your own trip planning at low volume. Respect Airbnb's terms; do not collect or republish at scale.
 
+## Who made this
+
+stay-finder is a small open example of what [AlusLabs](https://aluslabs.com) builds for businesses:
+AI agents that read websites and documents, apply a person's own rules, and turn the result into
+something you can decide from in minutes. The same pattern runs listing monitoring for property
+teams, lead research, and AI steps inside existing workflows. Write-ups and examples:
+
+- [AI integration services](https://aluslabs.com/ai-integration-services)
+- [AI agents for small business: setup without code](https://aluslabs.com/blog/ai-agents-for-small-business-2026-setup-without-code)
+- [Automation for real estate](https://aluslabs.com/industries/real-estate)
+
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md): no server, no telemetry, nothing sent to the author.
+
 ## Source and license
 
 https://github.com/arturl95/stay-finder. The same repository also holds an optional ready-made

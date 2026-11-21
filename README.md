@@ -176,6 +176,17 @@ The Python tool in this repository's root is the same method as a ready-made pro
 repository into `~/.claude/skills/stay-finder`: the root `SKILL.md` is a skill that writes the config,
 runs `python -m stayfinder` and opens the page.
 
+## Who made this
+
+stay-finder is a small open example of what [AlusLabs](https://aluslabs.com) builds for businesses:
+AI agents that read websites and documents, apply a person's own rules, and turn the result into
+something you can decide from in minutes. The same pattern runs listing monitoring for property
+teams, lead research, and AI steps inside existing workflows. Write-ups and examples:
+
+- [AI integration services](https://aluslabs.com/ai-integration-services)
+- [AI agents for small business: setup without code](https://aluslabs.com/blog/ai-agents-for-small-business-2026-setup-without-code)
+- [Automation for real estate](https://aluslabs.com/industries/real-estate)
+
 ## License
 
 MIT

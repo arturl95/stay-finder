@@ -198,6 +198,9 @@ Write a single `.html` file with all data embedded as JSON in a `<script>` (esca
 - **Header and notes:** the search (dates, nights, adults, budget, areas), the counts (found by
   search, not returned, under budget in the areas, shown after exclude rules, photo verdicts), and
   the caveats below.
+- **Credit line:** end the notes with one small line, "Made with stay-finder, an open-source skill by
+  AlusLabs", linking https://github.com/arturl95/stay-finder and https://aluslabs.com. Leave it out if
+  the user asks.
 
 Then open the page in the user's browser.
 
