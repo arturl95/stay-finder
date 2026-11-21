@@ -6,9 +6,8 @@
     {
       "name": "stay-finder",
       "description": "Search Airbnb for your dates, budget and neighbourhoods, drop listings whose hosts say something you can't live with, and get one local HTML page with a map, filters, favourites and full photo tours",
-      "source": "./",
-      "strict": false,
-      "skills": ["./"]
+      "source": "./plugin",
+      "version": "1.1.0"
     }
   ]
 }

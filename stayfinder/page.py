@@ -1,4 +1,4 @@
-"""Turn the listing records into one self-contained HTML page (template.html + embedded JSON)."""
+"""Turn the listing records into one HTML page (template.html + embedded JSON; the map loads Leaflet and OpenStreetMap tiles)."""
 import html
 import json
 import math
@@ -8,14 +8,23 @@ from pathlib import Path
 from . import config
 
 TEMPLATE = Path(__file__).with_name("template.html")
+VENDOR = Path(__file__).with_name("vendor")  # Leaflet 1.9.4, BSD-2-Clause, see vendor/LICENSE-leaflet.txt
 KNOWN_AMENITY_IDS = {4: "wifi", 8: "kitchen"}  # checked against Airbnb's own result counts
-MAP_W, MAP_H_MAX, MAP_H_MIN, MAP_PAD = 440, 680, 260, 22
 
 
 def embed_json(obj):
     """JSON that is safe inside <script>: no '<' at all, so '</script>' and '<!--' cannot occur."""
     return (json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
             .replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def inline_safe(code, end_tag):
+    """Code to put inside <script> or <style>: its closing tag must not occur in it. In JS strings and
+    regexes "<\\/" means the same as "</", so it is escaped that way; anything else is an error."""
+    out = re.sub(re.escape(end_tag), lambda m: "<\\/" + m.group(0)[2:], code, flags=re.I)
+    if end_tag == "</style" and out != code:
+        raise RuntimeError("leaflet.css contains </style; it cannot be inlined")
+    return out
 
 
 def centroid(ring):
@@ -44,26 +53,6 @@ def area_labels(areas):
         la, lo = centroid(max(rings, key=ring_area))
         out.append([la, lo, name])
     return out
-
-
-def fit_map(points):
-    """Projection that fits all points: centre, km per degree, pixels per km, grid step in km."""
-    if not points:
-        raise ValueError("nothing to draw on the map")
-    lats = [p[0] for p in points]
-    lngs = [p[1] for p in points]
-    c = [(min(lats) + max(lats)) / 2, (min(lngs) + max(lngs)) / 2]
-    kx, ky = 111.32 * math.cos(math.radians(c[0])), 110.57
-    w_km = max((max(lngs) - min(lngs)) * kx, 0.2)
-    h_km = max((max(lats) - min(lats)) * ky, 0.2)
-    s = (MAP_W - 2 * MAP_PAD) / w_km
-    h = h_km * s + 2 * MAP_PAD
-    if h > MAP_H_MAX:
-        s = (MAP_H_MAX - 2 * MAP_PAD) / h_km
-        h = MAP_H_MAX
-    h = max(h, MAP_H_MIN)
-    grid = next((g for g in (0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100) if g * s >= 60), 100)
-    return {"W": MAP_W, "H": round(h), "c": c, "kx": kx, "ky": ky, "s": s, "grid": grid}
 
 
 def search_filter_text(cfg):
@@ -128,9 +117,6 @@ def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key, judg
     """cfg: checked config; listings: records from pipeline.listing_record; areas: {name: rings};
     bbox: [s, w, n, e] that was searched; storage_key: names this page's localStorage entries;
     judged: a judgements file was given, so the page gets the photo-check filter, sort and colours."""
-    points = [p for rings in areas.values() for ring in rings for p in ring] \
-        or [[bbox[0], bbox[1]], [bbox[2], bbox[3]]]
-    points += [[d["lat"], d["lng"]] for d in listings]
     area_names = list(areas)
     app = {
         "title": cfg["title"], "checkin": cfg["checkin"], "checkout": cfg["checkout"],
@@ -140,7 +126,7 @@ def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key, judg
         "search_filters": search_filter_text(cfg),
         "key": "stayfinder:" + storage_key,
         "areas": [{"name": n, "rings": areas[n]} for n in area_names],
-        "labels": area_labels(areas), "bbox": bbox, "map": fit_map(points),
+        "labels": area_labels(areas), "bbox": bbox,
         "flags": [r["label"] for r in cfg["rules"] if r["action"] == "flag"],
         "highlights": [r["label"] for r in cfg["rules"] if r["action"] == "highlight"],
         "rule_count": len(cfg["rules"]),
@@ -148,9 +134,11 @@ def build_page(cfg, listings, areas, bbox, stats, searched_at, storage_key, judg
         "stats": stats, "listings": listings, "judged": judged,
     }
     tpl = TEMPLATE.read_text(encoding="utf-8")
-    for marker in ("{{TITLE}}", "{{CONTROLS}}", "{{APP_JSON}}"):
+    for marker in ("{{TITLE}}", "{{CONTROLS}}", "{{APP_JSON}}", "{{LEAFLET_CSS}}", "{{LEAFLET_JS}}"):
         if tpl.count(marker) != 1:
             raise RuntimeError(f"template.html must contain {marker} exactly once")
     values = {"TITLE": html.escape(cfg["title"]), "CONTROLS": controls_html(cfg, area_names, listings, judged),
-              "APP_JSON": embed_json(app)}
-    return re.sub(r"\{\{(TITLE|CONTROLS|APP_JSON)\}\}", lambda m: values[m.group(1)], tpl)
+              "APP_JSON": embed_json(app),
+              "LEAFLET_CSS": inline_safe((VENDOR / "leaflet.css").read_text(encoding="utf-8"), "</style"),
+              "LEAFLET_JS": inline_safe((VENDOR / "leaflet.js").read_text(encoding="utf-8"), "</script")}
+    return re.sub(r"\{\{(TITLE|CONTROLS|APP_JSON|LEAFLET_CSS|LEAFLET_JS)\}\}", lambda m: values[m.group(1)], tpl)

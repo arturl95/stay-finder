@@ -3,7 +3,7 @@
 Find Airbnb stays for your dates and budget in the neighbourhoods you name, drop the ones whose hosts
 say something you can't live with, and get **one local HTML page** to choose from:
 
-- a map with the neighbourhood outlines and a dot per listing (click a dot to jump to its card)
+- a zoomable street map with the neighbourhood outlines and a dot per listing (click a dot to jump to its card)
 - filters: price, area, rating, studios, each of your own rules, must-have amenities
 - favourites and deletions saved in your browser
 - the full photo tour of every listing (with room names), category ratings, description and house rules
@@ -11,7 +11,7 @@ say something you can't live with, and get **one local HTML page** to choose fro
 - optionally, a photo check: a verdict and a one-line note per listing from looking at its photos
 
 It reads Airbnb's public search and listing pages, the same HTML a browser gets. It does not log in,
-book, or contact anyone. Python 3.10+, standard library only.
+book, or contact anyone. Python 3.10+, standard library only (optional: `node`, to run the page-script tests).
 
 ## Quick start
 
@@ -78,7 +78,11 @@ A verdict is a judgement from photos the host chose, not an inspection.
 3. **Listing pages.** Every listing under budget inside an area has its page opened: photo tour,
    overview, ratings, house rules, amenities, description (translated, plus the host's original).
 4. **Rules** run over the title, description and house rules, in English and in the host's language.
-5. **Page.** Everything is embedded as JSON in one HTML file; it needs no server.
+5. **Page.** Everything is embedded as JSON in one HTML file, together with the map library
+   (Leaflet 1.9.4, BSD-2-Clause, vendored in `stayfinder/vendor/`); it needs no server. When opened,
+   the page loads map tiles from Esri (`server.arcgisonline.com`; OpenStreetMap's own tile servers
+   refuse pages opened from a local file, which send no Referer), listing photos from Airbnb's image
+   server, and fonts from Google Fonts.
 
 Requests are polite: at least 0.5 s between Airbnb requests (4 listing pages at a time at most),
 at least 0.2 s between photo downloads (4 at a time at most), and 1 request per second to Nominatim.
@@ -149,21 +153,28 @@ python -m unittest discover -s tests
 ```
 
 They run offline on small hand-made fixtures. If `node` is installed, the page's script is also run
-against a stub DOM and every filter (including the photo check), favourites, the photo viewer and the
-map are exercised.
+against a stub DOM and a stub of the map library, and every filter (including the photo check),
+favourites, the photo viewer and the map (markers, outlines, re-fitting, tile errors) are exercised.
 `node tests/page_harness.js out/your-page.html` runs the same checks on a page you built.
 
 ## Use with Claude Code
 
-This repository is a Claude Code plugin with one skill. Install it from inside Claude Code:
+The plugin lives in [`plugin/`](plugin/). Install it from inside Claude Code:
 
 ```
 /plugin marketplace add arturl95/stay-finder
 /plugin install stay-finder@stay-finder
 ```
 
-Or clone it into `~/.claude/skills/stay-finder`. Then ask for "a stay in <place> for <dates> under <budget>":
-the skill asks for anything missing, writes the config, runs the search and opens the page.
+Then ask for "a stay in <place> for <dates> under <budget>". The plugin is **instructions only**: one
+skill that teaches Claude this method (where Airbnb's data is, how to page through a map box, how to
+apply your rules, how to judge photos, how to build the page), and Claude does the work with its own
+tools. It ships no code.
+
+The Python tool in this repository's root is the same method as a ready-made program
+(`python -m stayfinder run my-trip.json`). To have Claude drive the program instead, clone this
+repository into `~/.claude/skills/stay-finder`: the root `SKILL.md` is a skill that writes the config,
+runs `python -m stayfinder` and opens the page.
 
 ## License
 

@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{TITLE}}</title>
+<style id="leaflet-css">
+{{LEAFLET_CSS}}
+</style>
+<script id="leaflet-js">
+{{LEAFLET_JS}}
+</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: filter bar on top, then a sticky map on the left and a scrolling list of listing cards on the right; stacks on phones. */
@@ -44,7 +50,15 @@ select{font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--lin
 :focus-visible{outline:2px solid var(--brick);outline-offset:2px}
 .main{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
 .mapbox{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
-.mapbox svg{width:100%;height:auto;display:block;max-height:calc(100vh - 140px)}
+#map{height:min(620px,calc(100vh - 150px));min-height:320px;border-radius:8px;isolation:isolate;background:var(--bg)}
+#map .leaflet-tooltip{font-family:var(--body);font-size:12.5px}
+.area{stroke:var(--brick);fill:var(--brick)}
+.area-label{background:none;border:0;box-shadow:none;color:var(--brick);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+.area-label::before{display:none}
+.pt{stroke:#fff;cursor:pointer}
+.pt.c-cheap,.pt.c-great{fill:var(--ok)} .pt.c-dear,.pt.c-ok{fill:var(--warn)} .pt.c-unchecked{fill:var(--muted)} .pt.c-no{fill:var(--brick)}
+.pt.fav{stroke:#1d2321} .pt.hov{stroke:var(--brick)}
+.pt-off{stroke:var(--off)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -59,9 +73,6 @@ select{font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--lin
 .strip img{height:170px;width:auto;max-width:none;display:block;background:var(--line)}
 .strip button span{position:absolute;left:5px;bottom:5px;font-size:10.5px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.62);color:#fff;letter-spacing:.02em}
 .strip .more{display:flex;align-items:center;justify-content:center;padding:0 18px;font-size:13px;color:var(--fg);background:var(--panel);min-width:90px}
-.pt.hov{stroke:var(--brick);stroke-width:3}
-.pt.fav{stroke:var(--fg);stroke-width:2.5}
-.ring-hl{fill:none;stroke:var(--brick);stroke-width:2;pointer-events:none}
 .warnbar{background:var(--brick-soft);color:var(--brick);border-radius:8px;padding:10px 14px;font-weight:600;font-size:14px}
 .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .acts button{font:inherit;font-size:12.5px;padding:3px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
@@ -110,7 +121,6 @@ details p{margin:6px 0 0;max-width:70ch;white-space:pre-line}
 .empty{padding:28px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:10px}
 .notes{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:14px}
 .notes ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:5px;max-width:90ch}
-svg text{font-family:var(--body)}
 @media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}.mapbox{position:static}}
 @media (max-width:520px){.strip img{height:140px}.cats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){.card{transition:none}}
@@ -131,9 +141,11 @@ svg text{font-family:var(--body)}
 
   <div class="main">
     <aside class="mapbox" aria-label="Map">
-      <svg id="map" role="img" aria-label="Positions of the listings"></svg>
+      <div class="warnbar" id="mapErr" hidden></div>
+      <div class="warnbar" id="tileErr" hidden></div>
+      <div id="map" role="region" aria-label="Map of the listings"></div>
       <div class="legend" id="legend"></div>
-      <div class="sub">North is up. Pins are approximate. Hover a card to find it on the map, or click a dot to jump to its card.</div>
+      <div class="sub">Pins are approximate. Scroll or pinch to zoom. Hover a card to find it on the map, or click a dot to jump to its card.</div>
     </aside>
     <section class="list" aria-label="Listings">
       <div class="count" id="count"></div>
@@ -235,7 +247,6 @@ const sorters = {
   photos: (a, b) => PHOTO_RANK[verdict(a)] - PHOTO_RANK[verdict(b)] || a.total - b.total,
 };
 const CHEAP = APP.max_total * 0.8;
-const col = d => APP.judged ? PHOTO_COL[verdict(d)] : d.total <= CHEAP ? "var(--ok)" : "var(--warn)";
 const CATN = {CLEANLINESS: "Clean", ACCURACY: "Accuracy", CHECKIN: "Check-in", COMMUNICATION: "Comms", LOCATION: "Location", VALUE: "Value"};
 
 function card(d) {
@@ -278,60 +289,77 @@ function card(d) {
     </div></article>`;
 }
 
-// ---- map: flat projection in km around the centre, fitted to the areas and listings in page.py ----
-const M = APP.map;
-const px = ([la, lo]) => [M.W / 2 + (lo - M.c[1]) * M.kx * M.s, M.H / 2 - (la - M.c[0]) * M.ky * M.s];
-const pts = ring => ring.map(p => px(p).map(v => v.toFixed(1)).join(",")).join(" ");
-$("map").setAttribute("viewBox", `0 0 ${M.W} ${M.H}`);
+// ---- map: Leaflet (inlined in this page) with Esri street tiles ----
+if (typeof L === "undefined") {
+  const msg = "The map library (Leaflet, inlined in this page) did not load, so this page cannot be shown. The page file may be damaged: build it again.";
+  $("mapErr").textContent = msg; $("mapErr").hidden = false;
+  throw new Error(msg);
+}
+const map = L.map("map", {zoomSnap: 0.5});
+map.attributionControl.setPrefix(false);
+// Esri tiles: a page opened as a local file sends no Referer, and OpenStreetMap's own tile servers refuse such requests
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {maxZoom: 19,
+  attribution: "Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors"})
+  .on("tileerror", e => {
+    console.error("Map tile failed to load:", e.tile && e.tile.src);
+    $("tileErr").textContent = "Some map tiles did not load from server.arcgisonline.com (offline, or the tile server refused). Listings and dots are still correct.";
+    $("tileErr").hidden = false;
+  })
+  .addTo(map);
+const AREA_ON = {dashArray: null, fillOpacity: 0.1}, AREA_OFF = {dashArray: "3 4", fillOpacity: 0};
+const outlines = APP.areas.map(a => L.polygon(a.rings, {className: "area", weight: 1.4, interactive: false, ...AREA_ON}).addTo(map));
+if (!APP.areas.length) {
+  const [s, w, n, e] = APP.bbox;
+  L.polygon([[s, w], [s, e], [n, e], [n, w]], {className: "area", weight: 1.2, fill: false, dashArray: "3 4", interactive: false}).addTo(map);
+}
+for (const [la, lo, name] of APP.labels)
+  L.tooltip({permanent: true, direction: "center", className: "area-label", interactive: false}).setLatLng([la, lo]).setContent(esc(name)).addTo(map);
+const dotLayer = L.layerGroup().addTo(map);
+const MK = {};          // listing id -> its marker, for the listings shown now
+let fitKey = null, hovered = null;
+const colKey = d => APP.judged ? verdict(d) : d.total <= CHEAP ? "cheap" : "dear";
+const dotWeight = id => isFav(id) ? 2.5 : 1.5;
 function drawMap(shown) {
-  const set = new Set(shown.map(d => d.id));
-  const g = [];
-  const step = M.grid * M.s;
-  for (let x = M.W / 2 % step; x <= M.W; x += step) g.push(`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${M.H}" stroke="var(--line)" stroke-width="0.6"/>`);
-  for (let y = M.H / 2 % step; y <= M.H; y += step) g.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${M.W}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="0.6"/>`);
-  APP.areas.forEach((a, i) => {
-    const on = fArea[i].checked;
-    for (const ring of a.rings) g.push(`<polygon points="${pts(ring)}" fill="${on ? "var(--brick-soft)" : "none"}" fill-opacity="0.55" stroke="var(--brick)" stroke-width="1.4" stroke-dasharray="${on ? "" : "3 4"}" opacity="0.9"/>`);
-  });
-  if (!APP.areas.length) {
-    const [s, w, n, e] = APP.bbox;
-    g.push(`<polygon points="${pts([[s, w], [s, e], [n, e], [n, w]])}" fill="none" stroke="var(--brick)" stroke-width="1.2" stroke-dasharray="3 4"/>`);
-  }
-  for (const [la, lo, name] of APP.labels) {
-    const [x, y] = px([la, lo]);
-    g.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="12" font-weight="700" letter-spacing=".08em" fill="var(--brick)" text-anchor="middle" opacity="0.85">${esc(name.toUpperCase())}</text>`);
-  }
-  g.push(`<line x1="16" y1="${M.H - 18}" x2="${(16 + step).toFixed(1)}" y2="${M.H - 18}" stroke="var(--fg)" stroke-width="2"/><text x="${(22 + step).toFixed(1)}" y="${M.H - 14}" font-size="11" fill="var(--muted)">${M.grid < 1 ? M.grid * 1000 + " m" : M.grid + " km"}</text>`);
-  const excludedView = f.show.value === "excluded";
-  const all = DATA.filter(d => excludedView || !d.exclude.length).sort((a, b) => set.has(a.id) - set.has(b.id));
-  for (const d of all) {
-    const [x, y] = px([d.lat, d.lng]);
-    if (set.has(d.id)) g.push(`<circle class="pt${isFav(d.id) ? " fav" : ""}" id="p${esc(d.id)}" data-id="${esc(d.id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${col(d)}" stroke="var(--panel)" stroke-width="1.5" style="cursor:pointer"><title>${esc(d.name)} · ${money(d.total)}</title></circle>`);
-    else g.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="none" stroke="var(--off)" stroke-width="1.2"/>`);
-  }
-  g.push(`<circle id="ringHl" class="ring-hl" r="16" cx="-50" cy="-50"/>`);
-  $("map").innerHTML = g.join("");
-  $("map").querySelectorAll(".pt").forEach(c => {
-    c.addEventListener("mouseenter", () => { hoverOn(c.dataset.id, false); $("c" + c.dataset.id)?.classList.add("hl"); });
-    c.addEventListener("mouseleave", () => { hoverOff(); $("c" + c.dataset.id)?.classList.remove("hl"); });
-    c.addEventListener("click", () => {
-      const el = $("c" + c.dataset.id); if (!el) return;
+  APP.areas.forEach((a, i) => outlines[i].setStyle(fArea[i].checked ? AREA_ON : AREA_OFF));
+  dotLayer.clearLayers();
+  for (const id of Object.keys(MK)) delete MK[id];
+  hovered = null;
+  const set = new Set(shown.map(d => d.id)), excludedView = f.show.value === "excluded";
+  for (const d of DATA) if (!set.has(d.id) && (excludedView || !d.exclude.length))
+    dotLayer.addLayer(L.circleMarker([d.lat, d.lng], {radius: 3.5, weight: 1.2, fill: false, className: "pt-off", interactive: false}));
+  for (const d of shown) {
+    const m = L.circleMarker([d.lat, d.lng], {radius: 6, weight: dotWeight(d.id), fillOpacity: 0.95,
+      className: `pt c-${colKey(d)}${isFav(d.id) ? " fav" : ""}`});
+    m.bindTooltip(`${esc(d.name)} · ${money(d.total)}${APP.judged ? ` · photos: ${PHOTO_WORD[verdict(d)]}` : ""}`, {direction: "top", offset: [0, -6]});
+    m.on("mouseover", () => $("c" + d.id)?.classList.add("hl"));
+    m.on("mouseout", () => $("c" + d.id)?.classList.remove("hl"));
+    m.on("click", () => {
+      const el = $("c" + d.id); if (!el) return;
       document.querySelectorAll(".card.hl").forEach(e => e.classList.remove("hl"));
       el.classList.add("hl");
       el.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"});
     });
-  });
+    dotLayer.addLayer(m);
+    MK[d.id] = m;
+  }
+  // re-fit only when the set of shown listings changed, so sorting or marking keeps the user's zoom
+  const key = [...set].sort().join(",");
+  if (key === fitKey) return;
+  fitKey = key;
+  const pts = shown.length ? shown.map(d => [d.lat, d.lng])
+    : APP.areas.length ? APP.areas.flatMap(a => a.rings.flat()) : [[APP.bbox[0], APP.bbox[1]], [APP.bbox[2], APP.bbox[3]]];
+  map.fitBounds(pts, {padding: [24, 24], maxZoom: 16});
 }
-function hoverOn(id, raise = true) {
-  const p = $("p" + id); if (!p) return;
-  p.classList.add("hov"); p.setAttribute("r", 10);
-  if (raise) p.parentNode.appendChild(p);
-  const r = $("ringHl"); r.setAttribute("cx", p.getAttribute("cx")); r.setAttribute("cy", p.getAttribute("cy"));
-  if (raise) r.parentNode.appendChild(r);
+function hoverOn(id) {
+  const m = MK[id]; if (!m) return;
+  hovered = [id, m];
+  m.setRadius(10); m.setStyle({weight: 3}); m.getElement().classList.add("hov"); m.bringToFront();
 }
 function hoverOff() {
-  $("map").querySelectorAll(".pt.hov").forEach(p => { p.classList.remove("hov"); p.setAttribute("r", 6); });
-  const r = $("ringHl"); if (r) { r.setAttribute("cx", -50); r.setAttribute("cy", -50); }
+  if (!hovered) return;
+  const [id, m] = hovered;
+  m.setRadius(6); m.setStyle({weight: dotWeight(id)}); m.getElement().classList.remove("hov");
+  hovered = null;
 }
 $("cards").addEventListener("mouseover", e => { const c = e.target.closest(".card"); if (c && !c.contains(e.relatedTarget)) { hoverOff(); hoverOn(c.dataset.id); } });
 $("cards").addEventListener("mouseout", e => { const c = e.target.closest(".card"); if (c && !c.contains(e.relatedTarget)) hoverOff(); });

@@ -1,2 +1,0 @@
-# stay-finder has no third-party dependencies: Python >= 3.10 standard library only.
-# Optional: node (any recent version) to run the page-script test.

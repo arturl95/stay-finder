@@ -1,0 +1,11 @@
+{
+  "name": "stay-finder",
+  "description": "Find Airbnb stays for your dates, budget and neighbourhoods: drop listings whose hosts say something you can't live with, optionally judge each one from its photos, and get one local HTML page with a zoomable map, filters, favourites and full photo tours. Instructions only; no code runs from the plugin.",
+  "version": "1.1.0",
+  "author": {"name": "arturl95"},
+  "homepage": "https://github.com/arturl95/stay-finder",
+  "repository": "https://github.com/arturl95/stay-finder",
+  "license": "MIT",
+  "keywords": ["airbnb", "travel", "accommodation", "short-term rental", "search", "map", "openstreetmap"],
+  "icon": "./.claude-plugin/icon.png"
+}

@@ -329,7 +329,10 @@ class PageTest(unittest.TestCase):
 
     def test_html_is_self_contained_and_safe(self):
         _, html = self.build()
-        self.assertEqual(html.count("</script>"), 1)  # the listing name's </script> did not leak
+        self.assertEqual(html.count("</script>"), 2)  # Leaflet + the page script; the listing name's </script> did not leak
+        self.assertIn("Leaflet 1.9.4", html)  # inlined, so the page works from a local file
+        self.assertNotIn("unpkg.com", html)
+        self.assertNotIn(".mapbox svg", html)  # such a rule breaks Leaflet's vector layer
         self.assertIn("<title>Test stay</title>", html)
         self.assertIn('id="fArea1"', html)
         self.assertIn('id="fFlag0"', html)
@@ -364,6 +367,11 @@ class PageTest(unittest.TestCase):
                                      timeout=60)
             self.assertEqual(blocked.returncode, 0, blocked.stdout + blocked.stderr)
             self.assertTrue(json.loads(blocked.stdout)["storeWarnVisible"])
+            bare = subprocess.run(["node", harness, str(p), "--no-leaflet"], capture_output=True, text=True, timeout=60)
+            self.assertEqual(bare.returncode, 0, bare.stdout + bare.stderr)
+            got = json.loads(bare.stdout)
+            self.assertIn("Leaflet", got["thrown"])
+            self.assertEqual(got["mapErr"], got["thrown"])
 
 
 JUDGED = {"101": {"verdict": "great", "note": "Bright living room with two big windows."},
@@ -457,7 +465,7 @@ class JudgedPageTest(unittest.TestCase):
 
 def cached_trip(d, **over):
     """A config, a cached run and cached listing pages in folder d, as `run` leaves them."""
-    raw = copy.deepcopy(PAGE_CFG) | over
+    raw = {**copy.deepcopy(PAGE_CFG), **over}
     cfg_path = Path(d) / "trip.json"
     cfg_path.write_text(json.dumps(raw))
     cfg = config.load(cfg_path, TODAY, allow_past=True)
@@ -470,7 +478,7 @@ def cached_trip(d, **over):
         cache.get(airbnb.listing_url(cfg, r["id"]),
                   lambda url, r=r: fx.listing_state(rules_text="Shared bathroom." if r["id"] == "103" else "Ok.",
                                                     photos=photo_sets.get(r["id"])))
-    cands = [{k: r[k] for k in ("id", "name", "lat", "lng", "total", "area")} | {"total_before_discount": None}
+    cands = [{**{k: r[k] for k in ("id", "name", "lat", "lng", "total", "area")}, "total_before_discount": None}
              for r in recs]
     cache.run_file(cfg_path).write_text(json.dumps({
         "search": config.search_fingerprint(cfg), "searched_at": "2030-01-01T10:00",
@@ -564,7 +572,7 @@ class CacheBuildTest(unittest.TestCase):
             for r in recs:
                 cache.get(airbnb.listing_url(cfg, r["id"]),
                           lambda url, r=r: fx.listing_state(rules_text="Shared bathroom." if r["id"] == "103" else "Ok."))
-            cands = [{k: r[k] for k in ("id", "name", "lat", "lng", "total", "area")} | {"total_before_discount": None}
+            cands = [{**{k: r[k] for k in ("id", "name", "lat", "lng", "total", "area")}, "total_before_discount": None}
                      for r in recs]
             cache.run_file(cfg_path).write_text(json.dumps({
                 "search": config.search_fingerprint(cfg), "searched_at": "2030-01-01T10:00",

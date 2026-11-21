@@ -1,5 +1,5 @@
 // Runs a built page's script in node against a tiny stub DOM and drives every filter.
-// Usage: node page_harness.js PAGE.html [--block-storage]
+// Usage: node page_harness.js PAGE.html [--block-storage] [--no-leaflet]
 // Prints one JSON object with what it observed; the Python tests assert on it. Exits non-zero on a
 // script error or a failed check.
 "use strict";
@@ -8,6 +8,7 @@ const vm = require("vm");
 
 const file = process.argv[2];
 const blockStorage = process.argv.includes("--block-storage");
+const noLeaflet = process.argv.includes("--no-leaflet");
 const html = fs.readFileSync(file, "utf8");
 
 // ---------- stub DOM ----------
@@ -102,6 +103,35 @@ const localStorage = {
   setItem(k, v) { if (blockStorage) throw new Error("blocked"); store.set(k, String(v)); },
 };
 const errors = [];
+
+// ---------- minimal Leaflet stub: records what the page draws ----------
+const leaflet = {fits: 0, polygons: [], tooltips: []};
+class Layer {
+  constructor(latlng, options) { this.latlng = latlng; this.options = {...options}; this.handlers = {}; this.el = {classList: new ClassList({attrs: {class: options && options.className || ""}})}; }
+  addTo(target) { if (target.addLayer) target.addLayer(this); return this; }
+  on(t, fn) { (this.handlers[t] ||= []).push(fn); return this; }
+  fire(t) { for (const fn of this.handlers[t] || []) fn({target: this}); return this; }
+  bindTooltip(content) { this.tooltip = content; return this; }
+  setStyle(s) { Object.assign(this.options, s); return this; }
+  setRadius(r) { this.options.radius = r; return this; }
+  bringToFront() { return this; }
+  getElement() { return this.el; }
+  setLatLng(ll) { this.latlng = ll; return this; }
+  setContent(c) { this.content = c; return this; }
+}
+class Group { constructor() { this.layers = []; } addTo() { return this; } addLayer(l) { this.layers.push(l); return this; } clearLayers() { this.layers = []; return this; } }
+const L = {
+  map: id => {
+    if (!registry.get(id)) throw new Error("L.map: no element #" + id);
+    return {attributionControl: {setPrefix(p) { leaflet.prefix = p; }}, addLayer() { return this; },
+      fitBounds(pts) { if (!pts.length || pts.some(p => !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) throw new Error("fitBounds: bad points"); leaflet.fits++; }};
+  },
+  tileLayer: (url, o) => { const l = new Layer(null, o); leaflet.tiles = {url, attribution: o.attribution, layer: l}; return l; },
+  polygon: (rings, o) => { const p = new Layer(rings, o); leaflet.polygons.push(p); return p; },
+  circleMarker: (ll, o) => new Layer(ll, o),
+  tooltip: o => { const t = new Layer(null, o); leaflet.tooltips.push(t); return t; },
+  layerGroup: () => (leaflet.dots = new Group()),
+};
 const ctx = {
   document: {
     getElementById: id => registry.get(id) || null,
@@ -112,8 +142,16 @@ const ctx = {
   console: {log() {}, error: (...a) => errors.push(a.map(String).join(" "))},
   Intl, Date, JSON, Math, Object, Array, Set, String, Number,
 };
+if (!noLeaflet) ctx.L = L;
 vm.createContext(ctx);
 const script = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</script>"));
+if (noLeaflet) {
+  // the page must stop with a visible message, not run without its map
+  let thrown = null;
+  try { vm.runInContext(script, ctx, {filename: file}); } catch (e) { thrown = String(e.message); }
+  console.log(JSON.stringify({thrown, mapErr: registry.get("mapErr").hidden ? null : registry.get("mapErr").textContent}));
+  process.exit(thrown ? 0 : 1);
+}
 vm.runInContext(script, ctx, {filename: file});
 
 // ---------- drive it ----------
@@ -121,7 +159,8 @@ const $ = id => registry.get(id);
 const APP = vm.runInContext("APP", ctx);
 const DATA = APP.listings;
 const shownIds = () => [...$("cards").innerHTML.matchAll(/<article [^>]*data-id="([^"]+)"/g)].map(m => m[1]);
-const dots = () => $("map").querySelectorAll(".pt").map(e => e.dataset.id);
+const MK = () => vm.runInContext("MK", ctx);
+const dots = () => Object.keys(MK());
 const fails = [];
 function check(ok, what) { if (!ok) fails.push(what); }
 function set(id, v) { const e = $(id); if (e.type === "checkbox") e.checked = v; else e.value = v; e.fire("input"); }
@@ -142,8 +181,20 @@ check(/Photos: /.test($("cards").innerHTML) === !!APP.judged, "photo chips prese
 // the rest of the filter checks count against every listing not excluded, so show every photo verdict
 if (APP.judged) set("fPhoto", "all");
 check(/match/.test($("count").textContent), "count text missing");
-check($("map").getAttribute("viewBox") === `0 0 ${APP.map.W} ${APP.map.H}`, "map viewBox not set");
-check(($("map").innerHTML.match(/<polygon /g) || []).length >= Math.max(1, APP.areas.reduce((n, a) => n + a.rings.length, 0)), "area outlines missing");
+check(leaflet.prefix === false, "attribution prefix not removed");
+// a page opened as a local file sends no Referer; OpenStreetMap's tile servers refuse that, Esri's do not
+check(/^https:\/\/server\.arcgisonline\.com\//.test(leaflet.tiles.url) && /Esri/.test(leaflet.tiles.attribution) && /OpenStreetMap/.test(leaflet.tiles.attribution), "Esri tiles or attribution missing");
+check($("tileErr").hidden, "tile error shown before any tile failed");
+leaflet.tiles.layer.fire("tileerror");
+check(!$("tileErr").hidden && /did not load/.test($("tileErr").textContent), "a failed tile shows no message");
+const tileLog = errors.findIndex(e => e.startsWith("Map tile failed"));
+check(tileLog >= 0, "a failed tile is not logged");
+if (tileLog >= 0) errors.splice(tileLog, 1);
+check(leaflet.polygons.length === Math.max(1, APP.areas.length), "area outlines missing");
+check(leaflet.tooltips.length === APP.labels.length, "area labels missing");
+check(leaflet.dots.layers.filter(l => /\bpt\b/.test(l.options.className)).length === shownIds().length, "marker count differs from cards");
+check(Object.values(MK()).every(m => typeof m.tooltip === "string" && m.tooltip.includes(" · ")), "marker tooltip missing");
+result.fits = {initial: leaflet.fits};
 
 // price
 if (live.length > 1) {
@@ -156,8 +207,12 @@ if (live.length > 1) {
   check(ids.length === live.filter(d => d.total <= +$("fPrice").value).length, "price: count wrong");
   set("fPrice", $("fPrice").attrs.max);
 }
-// sort
+// sort: same listings, so the map keeps its view
+let fits = leaflet.fits;
+set("fSort", "rating");
+check(leaflet.fits === fits, "changing the sort re-fitted the map");
 set("fSort", "price");
+check(leaflet.fits === fits, "changing the sort re-fitted the map");
 ids = shownIds();
 check(ids.every((id, i) => i === 0 || byId[ids[i - 1]].total <= byId[id].total), "sort by price is not ascending");
 // areas
@@ -228,8 +283,7 @@ if (APP.judged) {
   result.steps.photo_order = ids;
   const rank = {great: 0, ok: 1, unchecked: 2, no: 3};
   check(ids.every((id, i) => i === 0 || rank[verdict(byId[ids[i - 1]])] <= rank[verdict(byId[id])]), "sort by photos is not best first");
-  const col = {great: "var(--ok)", ok: "var(--warn)", unchecked: "var(--muted)", no: "var(--brick)"};
-  for (const c of $("map").querySelectorAll(".pt")) check(c.attrs.fill === col[verdict(byId[c.dataset.id])], `dot ${c.dataset.id}: colour ${c.attrs.fill} does not match its photo verdict`);
+  for (const [id, m] of Object.entries(MK())) check(m.options.className.split(" ").includes("c-" + verdict(byId[id])), `dot ${id}: class ${m.options.className} does not match its photo verdict`);
   for (const d of live.filter(d => d.photo)) check($("cards").innerHTML.includes(`Photos: ${verdict(d)}`) && $("cards").innerHTML.includes(d.photo.note.replace(/&/g, "&amp;")), `card ${d.id}: verdict or note missing`);
   check($("cards").innerHTML.includes("Photos: not checked") === live.some(d => !d.photo), "'not checked' chip wrong");
   result.legend = $("legend").innerHTML.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -265,10 +319,15 @@ if (ids.length >= 2) {
   $("lbNext").fire("click");
   for (const fn of docHandlers.keydown || []) fn({key: "Escape"});
   check($("lb").hidden, "Escape did not close the viewer");
-  // map dot click highlights its card
-  const dot = $("map").querySelectorAll(".pt")[0];
+  // map dot click highlights its card; hovering a card enlarges its dot
+  const [dotId, dot] = Object.entries(MK())[0];
   dot.fire("click");
-  check($("c" + dot.dataset.id).classList.contains("hl"), "clicking a dot did not highlight its card");
+  check($("c" + dotId).classList.contains("hl"), "clicking a dot did not highlight its card");
+  const card = $("c" + dotId);
+  $("cards").fire("mouseover", {target: card, relatedTarget: null});
+  check(dot.options.radius === 10 && dot.getElement().classList.contains("hov"), "hovering a card did not enlarge its dot");
+  $("cards").fire("mouseout", {target: card, relatedTarget: null});
+  check(dot.options.radius === 6 && !dot.getElement().classList.contains("hov"), "leaving a card did not shrink its dot");
 }
 result.errors = errors;
 result.fails = fails;
